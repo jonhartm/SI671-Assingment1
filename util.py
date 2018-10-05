@@ -1,4 +1,5 @@
 import time
+import sys
 
 # try to parse a string to an int.
 # returns None if it failed
@@ -19,3 +20,7 @@ class Timer():
 
     def __str__(self):
         return '{:.3}s'.format(self.elapsed)
+
+def super_print(s):
+    sys.stdout.write(s+"\n")
+    sys.stdout.flush()
