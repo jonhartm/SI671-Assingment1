@@ -120,6 +120,54 @@ def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
     print(user_list)
     return user_list
 
+def PredictReview(userID, movieID):
+    # parameters
+    N = 10 # what's the maximum number of similar users to consider
+
+    # We're only interested in checking other users who have also reviewed this movie
+    indexes_to_check = Get_Indexes_With_Reviews(movieID)
+
+    # unless I come up with something better, return the average rating for a movie that's never been rated.
+    if indexes_to_check == []:
+        return 4.110994929404886
+
+    # Get our indexes so we can find them on the review matrix
+    user_index = users[users.userID==userID].index.values[0]
+    movie_index = movies[movies.asin==movieID].index[0]
+
+    # we need get this user's review vector to compare to all the other users
+    # get this by taking their reviews and multiplying by the concepts matrix
+    this_user_reviews = movie_reviews[user_index].toarray()[0]
+    this_user_vector = np.sum(this_user_reviews*movie_to_concept, axis=1)
+
+    user_list = []
+    for row in indexes_to_check:
+        user_reviews = movie_reviews[row].toarray()[0]
+        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
+        similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
+        user_rating = user_reviews[movie_index]
+        if similarity > 0:
+            user_list.append({"id":row,"sim":similarity,"rating":user_rating})
+
+    user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N) # sort by similarity descending, limit by N
+    user_list["weighted_rating"] = user_list.rating * user_list.sim # get ratings weighted by similarity
+    predicted_rating = user_list.weighted_rating.sum()/user_list.sim.sum() # predicted rating is the weighted average of the similar users by similarity
+    return predicted_rating
+
+def GetPredictions():
+    results = []
+    count = 0
+    total_count = req_reviews.shape[0]
+    for row in req_reviews.iterrows():
+        count += 1
+        t = Timer()
+        t.Start()
+        predicted = PredictReview(row[1].reviewerID, row[1].asin)
+        results.append({"datapointID":row[1].datapointID,"overall":predicted})
+        t.Stop()
+        super_print("({} of {}) Review for [{},{}]={:.2f} ({:.2f}s)".format(count, total_count,row[1].reviewerID, row[1].asin,predicted,t.elapsed))
+    DataFrame(results).to_csv("output.csv", index=False)
+
 if __name__=="__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "create":
@@ -134,8 +182,7 @@ if __name__=="__main__":
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
-            userID = sys.argv[2]
-            movieID = sys.argv[3]
-            print("Estimating Review for {} by {}...".format(movieID, userID))
-            indexes_to_check = Get_Indexes_With_Reviews(movieID)
-            Get_Similar_Users(sys.argv[2], indexes_to_check)
+            if sys.argv[2] == "all":
+                GetPredictions()
+            else:
+                PredictReview(sys.argv[2],sys.argv[3])
