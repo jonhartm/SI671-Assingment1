@@ -4,8 +4,23 @@ import scipy.sparse
 from scipy.sparse import lil_matrix, coo_matrix, linalg
 import numpy as np
 import sys
+from sklearn.metrics import pairwise
 
 from util import Timer
+
+review_file = "tinyset.npz"
+user_file = "tinyusers_df.json"
+movie_file = "tinymovies_df.json"
+movie_concept_file = "tinyMovie_to_Concept.npy"
+
+try:
+    movie_reviews = scipy.sparse.load_npz(review_file)
+    movie_reviews = movie_reviews.tolil().astype(np.int8)
+    users = pd.read_json(user_file, lines=True)
+    movies = pd.read_json(movie_file, lines=True)
+    movie_to_concept = np.load(movie_concept_file)
+except Exception as e:
+    raise
 
 # Load in a json file and use it to populate a sparse matrix with reviewrs as rows and movies as columns
 # saves the resultant output to an npz file so we can retrieve it later without having to re-create it.
@@ -77,6 +92,23 @@ def Create_SVD(min_energy=0.8):
     U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
     np.save(movie_concept_file,V)
 
+def Get_Similar_Users(UserID, N=5, min_sim=0.8):
+    user_index = users[users.user_id==UserID].index.values[0]
+    this_user_reviews = movie_reviews[user_index].toarray()[0]
+    this_user_vector = np.sum(this_user_reviews*movie_to_concept, axis=1)
+    user_list = []
+    for row in range(movie_reviews.shape[0]):
+        if row == user_index: # skip this user's own row
+            continue
+        user_reviews = movie_reviews[row].toarray()[0]
+        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
+        similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
+        if similarity >= min_sim:
+            user_list.append({"id":row,"sim":similarity})
+    user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N)
+    print(user_list)
+    return user_list
+
 if __name__=="__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "create":
@@ -88,3 +120,5 @@ if __name__=="__main__":
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
                 Create_SVD()
+        elif sys.argv[1] == "similar":
+            Get_Similar_Users(sys.argv[2])
