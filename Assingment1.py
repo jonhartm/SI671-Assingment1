@@ -93,19 +93,29 @@ def Create_SVD(k, min_energy=0.8):
     # np.save(movie_concept_file,V)
     super_print("Complete")
 
-def Get_Similar_Users(UserID, N=5, min_sim=0.8):
-    user_index = users[users.user_id==UserID].index.values[0]
+def Get_Indexes_With_Reviews(Movie):
+    movie_index = movies[movies.asin==Movie].index[0]
+    return movie_reviews.getcol(movie_index).nonzero()[0]
+
+def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
+    user_index = users[users.userID==UserID].index.values[0]
     this_user_reviews = movie_reviews[user_index].toarray()[0]
     this_user_vector = np.sum(this_user_reviews*movie_to_concept, axis=1)
+    super_print("Searching for Users similar to " + UserID)
+    if ids_to_check == []:
+        ids_to_check = range(m_reviews.shape[0])
     user_list = []
-    for row in range(movie_reviews.shape[0]):
+    for row in ids_to_check:
         if row == user_index: # skip this user's own row
             continue
         user_reviews = movie_reviews[row].toarray()[0]
         user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
         similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
+        user_list.append({"id":row,"sim":similarity})
         if similarity >= min_sim:
-            user_list.append({"id":row,"sim":similarity})
+            super_print("Found User with similarity {}".format(similarity))
+        else:
+            super_print("(Poor User similarity: {:.2f})".format(similarity))
     user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N)
     print(user_list)
     return user_list
@@ -123,3 +133,9 @@ if __name__=="__main__":
                 Create_SVD(1000)
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
+        elif sys.argv[1] == "predict":
+            userID = sys.argv[2]
+            movieID = sys.argv[3]
+            print("Estimating Review for {} by {}...".format(movieID, userID))
+            indexes_to_check = Get_Indexes_With_Reviews(movieID)
+            Get_Similar_Users(sys.argv[2], indexes_to_check)
