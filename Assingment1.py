@@ -8,10 +8,11 @@ from sklearn.metrics import pairwise
 
 from util import Timer, super_print
 
-review_file = "devset.npz"
-user_file = "devsetusers_df.json"
-movie_file = "devsetmovies_df.json"
-movie_concept_file = "tinyMovie_to_Concept.npy"
+review_file = "1_trainingset.npz"
+user_file = "trainingsetusers_df.json"
+movie_file = "trainingsetmovies_df.json"
+movie_concept_file = "trainingMovie_to_Concept_100.npy"
+req_reviews_file = "reviews.test.unlabeled.csv"
 
 try:
     movie_reviews = scipy.sparse.load_npz(review_file)
@@ -19,6 +20,7 @@ try:
     users = pd.read_json(user_file, lines=True)
     movies = pd.read_json(movie_file, lines=True)
     movie_to_concept = np.load(movie_concept_file)
+    req_reviews = pd.read_csv(req_reviews_file)
 except Exception as e:
     print("Unable to load all files...")
 
@@ -81,6 +83,7 @@ def Create_SVD(k, min_energy=0.8):
     # k=min(movie_reviews.shape)-1
     # U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
     # total_energy = np.square(s).sum()
+    # print(s)
     #
     # energy = total_energy
     # while energy > (total_energy*min_energy):
@@ -88,9 +91,10 @@ def Create_SVD(k, min_energy=0.8):
     #     s = np.delete(s,0)
     #     energy = np.square(s).sum()
     #     print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
-    # print("Making SVD with k =",k)
-    # U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
-    # np.save(movie_concept_file,V)
+    super_print("Making SVD with k = " + str(k))
+    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
+    print(s)
+    np.save(movie_concept_file,V)
     super_print("Complete")
 
 def Get_Indexes_With_Reviews(Movie):
@@ -182,7 +186,7 @@ if __name__=="__main__":
                 print("creating training file...")
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
-                Create_SVD(1000)
+                Create_SVD(100)
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
