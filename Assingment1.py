@@ -94,8 +94,12 @@ def Create_SVD(k, min_energy=0.8):
     super_print("Complete")
 
 def Get_Indexes_With_Reviews(Movie):
-    movie_index = movies[movies.asin==Movie].index[0]
-    return movie_reviews.getcol(movie_index).nonzero()[0]
+    try:
+        movie_index = movies[movies.asin==Movie].index[0]
+        cols = movie_reviews.getcol(movie_index).nonzero()[0]
+    except:
+        cols = []
+    return cols
 
 def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
     user_index = users[users.userID==UserID].index.values[0]
