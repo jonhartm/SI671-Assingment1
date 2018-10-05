@@ -1,0 +1,6 @@
+*.ipynb
+*.json
+*.npz
+*.pdf
+*.npy
+*.csv
