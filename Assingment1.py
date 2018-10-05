@@ -60,6 +60,23 @@ def Create_NPZ(file, output_file):
 
     # save to file
     scipy.sparse.save_npz(output_file + ".npz", m_reviews)
+
+def Create_SVD(min_energy=0.8):
+    # figure out how much we can reduce the review matrix
+    k=min(movie_reviews.shape)-1
+    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
+    total_energy = np.square(s).sum()
+
+    energy = total_energy
+    while energy > (total_energy*min_energy):
+        k -= 1
+        s = np.delete(s,0)
+        energy = np.square(s).sum()
+        print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
+    print("Making SVD with k =",k)
+    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
+    np.save(movie_concept_file,V)
+
 if __name__=="__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "create":
@@ -69,3 +86,5 @@ if __name__=="__main__":
             elif sys.argv[2] == "training":
                 print("creating training file...")
                 Create_NPZ("reviews.training.json", "trainingset")
+            elif sys.argv[2] == "SVD":
+                Create_SVD()
