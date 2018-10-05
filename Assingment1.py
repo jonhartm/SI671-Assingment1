@@ -6,11 +6,11 @@ import numpy as np
 import sys
 from sklearn.metrics import pairwise
 
-from util import Timer
+from util import Timer, super_print
 
-review_file = "tinyset.npz"
-user_file = "tinyusers_df.json"
-movie_file = "tinymovies_df.json"
+review_file = "devset.npz"
+user_file = "devsetusers_df.json"
+movie_file = "devsetmovies_df.json"
 movie_concept_file = "tinyMovie_to_Concept.npy"
 
 try:
@@ -20,7 +20,7 @@ try:
     movies = pd.read_json(movie_file, lines=True)
     movie_to_concept = np.load(movie_concept_file)
 except Exception as e:
-    raise
+    print("Unable to load all files...")
 
 # Load in a json file and use it to populate a sparse matrix with reviewrs as rows and movies as columns
 # saves the resultant output to an npz file so we can retrieve it later without having to re-create it.
@@ -76,21 +76,22 @@ def Create_NPZ(file, output_file):
     # save to file
     scipy.sparse.save_npz(output_file + ".npz", m_reviews)
 
-def Create_SVD(min_energy=0.8):
+def Create_SVD(k, min_energy=0.8):
     # figure out how much we can reduce the review matrix
-    k=min(movie_reviews.shape)-1
-    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
-    total_energy = np.square(s).sum()
-
-    energy = total_energy
-    while energy > (total_energy*min_energy):
-        k -= 1
-        s = np.delete(s,0)
-        energy = np.square(s).sum()
-        print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
-    print("Making SVD with k =",k)
-    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
-    np.save(movie_concept_file,V)
+    # k=min(movie_reviews.shape)-1
+    # U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
+    # total_energy = np.square(s).sum()
+    #
+    # energy = total_energy
+    # while energy > (total_energy*min_energy):
+    #     k -= 1
+    #     s = np.delete(s,0)
+    #     energy = np.square(s).sum()
+    #     print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
+    # print("Making SVD with k =",k)
+    # U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
+    # np.save(movie_concept_file,V)
+    super_print("Complete")
 
 def Get_Similar_Users(UserID, N=5, min_sim=0.8):
     user_index = users[users.user_id==UserID].index.values[0]
@@ -119,6 +120,6 @@ if __name__=="__main__":
                 print("creating training file...")
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
-                Create_SVD()
+                Create_SVD(1000)
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
