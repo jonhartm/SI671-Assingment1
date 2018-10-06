@@ -170,18 +170,35 @@ def PredictReview(userID, movieID):
                 user_reviews = movie_reviews[row].toarray()[0]
                 user_list.append({"id":row,"sim":similarity,"rating":user_reviews[movie_index]})
 
-def GetPredictions():
+        user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N) # sort by similarity descending, limit by N
+        user_list["weighted_rating"] = user_list.rating * user_list.sim # get ratings weighted by similarity
+        predicted_rating = user_list.weighted_rating.sum()/user_list.sim.sum() # predicted rating is the weighted average of the similar users by similarity
+        return predicted_rating
+
+    except:
+        print("oh god I have no idea") # if all else fails return the average
+        return 4.110994929404886
+
+def GetPredictions(file=None):
     results = []
+    records_to_skip = 0
+    if file is not None:
+        results = pd.read_csv(file).to_dict('records')
+        records_to_skip = len(results)
     count = 0
     total_count = req_reviews.shape[0]
+    t = Timer()
+    t.Start()
     for row in req_reviews.iterrows():
         count += 1
-        t = Timer()
-        t.Start()
-        predicted = PredictReview(row[1].reviewerID, row[1].asin)
-        results.append({"datapointID":row[1].datapointID,"overall":predicted})
-        t.Stop()
-        super_print("({} of {}) Review for [{},{}]={:.2f} ({:.2f}s)".format(count, total_count,row[1].reviewerID, row[1].asin,predicted,t.elapsed))
+        if count > records_to_skip:
+            predicted = PredictReview(row[1].reviewerID, row[1].asin)
+            results.append({"datapointID":row[1].datapointID,"overall":predicted})
+            if count % 100 == 0:
+                t.Stop()
+                super_print("({} of {}) ({:.2f}s/prediction)".format(count, total_count, t.elapsed/100))
+                t.Start()
+                DataFrame(results).to_csv("output.csv", index=False)
     DataFrame(results).to_csv("output.csv", index=False)
 
 if __name__=="__main__":
