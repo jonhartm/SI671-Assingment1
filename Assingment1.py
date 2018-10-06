@@ -13,6 +13,7 @@ user_file = "trainingsetusers_df.json"
 movie_file = "trainingsetmovies_df.json"
 movie_concept_file = "trainingMovie_to_Concept_100.npy"
 req_reviews_file = "reviews.test.unlabeled.csv"
+user_vectors_file = "user_vectors.npy"
 
 try:
     movie_reviews = scipy.sparse.load_npz(review_file)
@@ -21,6 +22,7 @@ try:
     movies = pd.read_json(movie_file, lines=True)
     movie_to_concept = np.load(movie_concept_file)
     req_reviews = pd.read_csv(req_reviews_file)
+    user_vectors = np.load(user_vectors_file)
 except Exception as e:
     print("Unable to load all files...")
 
@@ -97,6 +99,18 @@ def Create_SVD(k, min_energy=0.8):
     np.save(movie_concept_file,V)
     super_print("Complete")
 
+# Create a numpy array by iterating through the users and applying the movie-to-concept matrix on each
+# saves the resulting file so we can load it again later
+def Create_user_vectors():
+    user_dict = users.to_dict('index')
+    user_vectors = []
+    for index,user in user_dict.items():
+        user_reviews = movie_reviews[index].toarray()[0]
+        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
+        user_vectors.append(user_vector)
+    user_vectors = np.array(user_vectors)
+    np.save(user_vectors_file, user_vectors)
+
 def Get_Indexes_With_Reviews(Movie):
     try:
         movie_index = movies[movies.asin==Movie].index[0]
@@ -139,28 +153,22 @@ def PredictReview(userID, movieID):
     if indexes_to_check == []:
         return 4.110994929404886
 
-    # Get our indexes so we can find them on the review matrix
-    user_index = users[users.userID==userID].index.values[0]
-    movie_index = movies[movies.asin==movieID].index[0]
+    try:
+        # Get our indexes so we can find them on the review matrix
+        user_index = users[users.userID==userID].index.values[0]
+        movie_index = movies[movies.asin==movieID].index[0]
 
-    # we need get this user's review vector to compare to all the other users
-    # get this by taking their reviews and multiplying by the concepts matrix
-    this_user_reviews = movie_reviews[user_index].toarray()[0]
-    this_user_vector = np.sum(this_user_reviews*movie_to_concept, axis=1)
+        this_user_vector = user_vectors[user_index]
 
-    user_list = []
-    for row in indexes_to_check:
-        user_reviews = movie_reviews[row].toarray()[0]
-        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
-        similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
-        user_rating = user_reviews[movie_index]
-        if similarity > 0:
-            user_list.append({"id":row,"sim":similarity,"rating":user_rating})
+        user_list = []
+        for row in indexes_to_check:
 
-    user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N) # sort by similarity descending, limit by N
-    user_list["weighted_rating"] = user_list.rating * user_list.sim # get ratings weighted by similarity
-    predicted_rating = user_list.weighted_rating.sum()/user_list.sim.sum() # predicted rating is the weighted average of the similar users by similarity
-    return predicted_rating
+            user_vector = user_vectors[row]
+            similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
+
+            if similarity > min_sim:
+                user_reviews = movie_reviews[row].toarray()[0]
+                user_list.append({"id":row,"sim":similarity,"rating":user_reviews[movie_index]})
 
 def GetPredictions():
     results = []
