@@ -144,7 +144,8 @@ def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
 
 def PredictReview(userID, movieID):
     # parameters
-    N = 10 # what's the maximum number of similar users to consider
+    N = 20 # what's the maximum number of similar users to consider
+    min_sim = 0# what is the minimum similarity we're going to consider
 
     # We're only interested in checking other users who have also reviewed this movie
     indexes_to_check = Get_Indexes_With_Reviews(movieID)
@@ -211,11 +212,11 @@ if __name__=="__main__":
                 print("creating training file...")
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
-                Create_SVD(100)
+                Create_SVD(10)
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
             if sys.argv[2] == "all":
-                GetPredictions()
+                GetPredictions("output.csv")
             else:
-                PredictReview(sys.argv[2],sys.argv[3])
+                print(PredictReview(sys.argv[2],sys.argv[3]))
