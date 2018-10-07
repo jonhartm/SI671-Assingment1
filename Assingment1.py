@@ -15,13 +15,15 @@ movie_concept_file = "trainingMovie_to_Concept_100.npy"
 req_reviews_file = "reviews.test.unlabeled.csv"
 
 try:
+    # load in the npz user-item matrix
     movie_reviews = scipy.sparse.load_npz(review_file)
-    movie_reviews = movie_reviews.tolil().astype(np.int8)
-    users = pd.read_json(user_file, lines=True)
-    movies = pd.read_json(movie_file, lines=True)
-    movie_to_concept = np.load(movie_concept_file)
-    req_reviews = pd.read_csv(req_reviews_file)
+    movie_reviews = movie_reviews.tolil().astype(np.int8) # convert it to a lil_matrix with int8 (1 <= values <= 5)
+    users = pd.read_json(user_file, lines=True) # get the dictionary that gives me the user->user index values
+    movies = pd.read_json(movie_file, lines=True) # get the dictionary that gives me the movie->movie index values
+    movie_to_concept = np.load(movie_concept_file) # get teh movie-to-concept matrix from the SVD
+    req_reviews = pd.read_csv(req_reviews_file) # get the list of reviews to find
 except Exception as e:
+    # let me know if any one of those isn't present.
     print("Unable to load all files...")
 
 # Load in a json file and use it to populate a sparse matrix with reviewrs as rows and movies as columns
@@ -47,11 +49,14 @@ def Create_NPZ(file, output_file):
     t.Start()
     count = 0
     total = reviews.shape[0]
+    # iterate through all rows in the reviews file I've loaded in
     for row in reviews.iterrows():
         count += 1
+        # grab the user and movie IDs from the dictionaries I made
         m_row_ID = users[users.userID==row[1].reviewerID].index.values[0]
         m_col_ID = movies[movies.asin==row[1].asin].index.values[0]
         m_value = row[1].overall
+        # assign the rating value to the matrix coordinate [user,movie]
         m_reviews[m_row_ID, m_col_ID] = m_value
 
         # just so I know it's still working
@@ -59,31 +64,27 @@ def Create_NPZ(file, output_file):
             sys.stdout.write("{} of {} ({} remaining)...\n".format(count, total, (total-count)))
             sys.stdout.flush()
 
-    # while we're here, lets just compute the average movie scores and save them in that dataframe
-    for row in range(m_reviews.shape[0]):
-        movies.at[row,"avg_rating"] = m_reviews[row].sum()/m_reviews[row].nnz
-        if row % 1000 == 0:
-            sys.stdout.write("Getting Average Movie Score: {} of {}...\n".format(row, m_reviews.shape[0]))
-            sys.stdout.flush()
-
-    # save the dataframes to files, because I've lost them twice already
+    # save the user->userid and movie->movieid dictionaries to files, because I've lost them twice already
     movies.to_json(output_file+"movies_df.json",orient='records', lines=True)
     users.to_json(output_file+"users_df.json",orient='records', lines=True)
 
     # convert to a coo matrix so we can save it
     m_reviews = coo_matrix(m_reviews)
+    # save to file
+    scipy.sparse.save_npz(output_file + ".npz", m_reviews)
     t.Stop()
     print("Completed in ",t)
 
-    # save to file
-    scipy.sparse.save_npz(output_file + ".npz", m_reviews)
 
+# Create an SVD matrix from the movie reviews user-item matrix
+# saves the movie-to-concept matrix to disk so we can get it later
 def Create_SVD(k):
     super_print("Making SVD with k = " + str(k))
     user_to_concept,s,movie_to_concept = linalg.svds(movie_reviews.asfptype(), k=k)
     np.save(movie_concept_file,movie_to_concept)
     super_print("Complete")
 
+# Given a userID and movieID, predict the rating that user would give to that movie
 def PredictReview(userID, movieID):
     try:
         # parameters
@@ -122,12 +123,17 @@ def PredictReview(userID, movieID):
         # if anything at all goes wrong, just spit out the average review score
         return 4.110994929404886
 
+# Roll through reviews.test.unlabeled.csv and get a predicted review for each user/movie combination
+# saves the results to "output.csv" (also saves every 1000 predictions, just in case)
 def GetPredictions(file=None):
     results = []
+
+    # So I don't have to re-do a lot of predictions if I start and stop
     records_to_skip = 0
     if file is not None:
         results = pd.read_csv(file).to_dict('records')
         records_to_skip = len(results)
+
     count = 0
     total_count = req_reviews.shape[0]
     t = Timer()
@@ -136,11 +142,10 @@ def GetPredictions(file=None):
         count += 1
         if count > records_to_skip:
             predicted = PredictReview(row[1].reviewerID, row[1].asin)
-            # super_print("{}: {}".format(count, predicted))
             results.append({"datapointID":row[1].datapointID,"overall":predicted})
-            if count % 100 == 0:
+            if count % 1000 == 0:
                 t.Stop()
-                super_print("({} of {}) ({:.2f}s/prediction)".format(count, total_count, t.elapsed/100))
+                super_print("({} of {}) ({:.2f}s/prediction)".format(count, total_count, t.elapsed/1000))
                 t.Start()
                 DataFrame(results).to_csv("output.csv", index=False)
     DataFrame(results).to_csv("output.csv", index=False)
