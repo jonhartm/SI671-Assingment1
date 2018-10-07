@@ -155,7 +155,7 @@ if __name__=="__main__":
                 print("creating training file...")
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
-                Create_SVD(10)
+                Create_SVD(int(sys.argv[3]))
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
