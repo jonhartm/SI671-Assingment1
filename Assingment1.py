@@ -13,7 +13,6 @@ user_file = "trainingsetusers_df.json"
 movie_file = "trainingsetmovies_df.json"
 movie_concept_file = "trainingMovie_to_Concept_100.npy"
 req_reviews_file = "reviews.test.unlabeled.csv"
-user_vectors_file = "user_vectors.npy"
 
 try:
     movie_reviews = scipy.sparse.load_npz(review_file)
@@ -94,30 +93,9 @@ def Create_SVD(k, min_energy=0.8):
     #     energy = np.square(s).sum()
     #     print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
     super_print("Making SVD with k = " + str(k))
-    U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
-    print(s)
-    np.save(movie_concept_file,V)
+    user_to_concept,s,movie_to_concept = linalg.svds(movie_reviews.asfptype(), k=k)
+    np.save(movie_concept_file,movie_to_concept)
     super_print("Complete")
-
-# Create a numpy array by iterating through the users and applying the movie-to-concept matrix on each
-# saves the resulting file so we can load it again later
-def Create_user_vectors():
-    user_dict = users.to_dict('index')
-    user_vectors = []
-    for index,user in user_dict.items():
-        user_reviews = movie_reviews[index].toarray()[0]
-        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
-        user_vectors.append(user_vector)
-    user_vectors = np.array(user_vectors)
-    np.save(user_vectors_file, user_vectors)
-
-def Get_Indexes_With_Reviews(Movie):
-    try:
-        movie_index = movies[movies.asin==Movie].index[0]
-        cols = movie_reviews.getcol(movie_index).nonzero()[0]
-    except:
-        cols = []
-    return cols
 
 def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
     user_index = users[users.userID==UserID].index.values[0]
@@ -142,7 +120,7 @@ def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
     print(user_list)
     return user_list
 
-def PredictReview(userID, movieID):
+def old_PredictReview(userID, movieID):
     # parameters
     N = 20 # what's the maximum number of similar users to consider
     min_sim = 0# what is the minimum similarity we're going to consider
@@ -180,6 +158,41 @@ def PredictReview(userID, movieID):
         print("oh god I have no idea") # if all else fails return the average
         return 4.110994929404886
 
+def PredictReview(userID, movieID):
+    try:
+        # parameters
+        N = 20 # how many movies to consider when we're weighting
+        min_sim = 0.2 # what is the minimum level of similarity to consider
+
+        # Get our indexes so we can find them on the review matrix
+        user_index = users[users.userID==userID].index.values[0]
+        movie_index = movies[movies.asin==movieID].index[0]
+
+        # get the movie->concept matrix for this movie
+        this_movie_concept_vector = movie_to_concept[:,movie_index]
+
+        # get a list of the indexs of movies this user has reviewed
+        user_reviews = movie_reviews.getrow(user_index).nonzero()[1]
+
+        # check how similar each movie is to the one we're trying to guess
+        movie_list = []
+        for m_id in user_reviews:
+            # get the concept vector for this movie
+            m_concept_vector = movie_to_concept[:,m_id]
+            # calculate how similar this movie's ratings are
+            similarity = pairwise.cosine_similarity([this_movie_concept_vector], [m_concept_vector])[0][0]
+            # add it to the list so we can sort it
+            if similarity > min_sim:
+                movie_list.append({"id":m_id,"sim":similarity,"rating":movie_reviews[user_index,m_id]})
+        # sort the list by similarity
+        movie_list = DataFrame(movie_list).sort_values("sim", ascending=False).head(N)
+        movie_list["weighted"] = movie_list.rating*movie_list.sim
+        predicted_rating = movie_list.weighted.sum()/movie_list.sim.sum()
+        return predicted_rating
+    except:
+        # if anything at all goes wrong, just spit out the average review score
+        return 4.110994929404886
+
 def GetPredictions(file=None):
     results = []
     records_to_skip = 0
@@ -194,6 +207,7 @@ def GetPredictions(file=None):
         count += 1
         if count > records_to_skip:
             predicted = PredictReview(row[1].reviewerID, row[1].asin)
+            # super_print("{}: {}".format(count, predicted))
             results.append({"datapointID":row[1].datapointID,"overall":predicted})
             if count % 100 == 0:
                 t.Stop()
@@ -217,6 +231,6 @@ if __name__=="__main__":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
             if sys.argv[2] == "all":
-                GetPredictions("output.csv")
+                GetPredictions()
             else:
                 print(PredictReview(sys.argv[2],sys.argv[3]))
