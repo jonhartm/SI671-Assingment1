@@ -235,5 +235,7 @@ if __name__=="__main__":
         elif sys.argv[1] == "predict":
             if sys.argv[2] == "all":
                 GetPredictions()
+            elif sys.argv[2] == "continue":
+                GetPredictions("output.csv")
             else:
                 print(PredictReview(sys.argv[2],sys.argv[3]))
