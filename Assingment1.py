@@ -183,12 +183,15 @@ def PredictReview(userID, movieID):
             similarity = pairwise.cosine_similarity([this_movie_concept_vector], [m_concept_vector])[0][0]
             # add it to the list so we can sort it
             if similarity > min_sim:
-                movie_list.append({"id":m_id,"sim":similarity,"rating":movie_reviews[user_index,m_id]})
+                rating = movie_reviews[user_index,m_id]
+                movie_list.append([similarity,(similarity*rating)]) # add a entry [sim,weighted rating]
         # sort the list by similarity
-        movie_list = DataFrame(movie_list).sort_values("sim", ascending=False).head(N)
-        movie_list["weighted"] = movie_list.rating*movie_list.sim
-        predicted_rating = movie_list.weighted.sum()/movie_list.sim.sum()
-        return predicted_rating
+        movie_list = np.array(movie_list) # convert to a numpy array
+        movie_list[::-1].sort(0) # sort the array by similarity descinding
+        movie_list = movie_list[:N] # trim to the top N elements
+        movie_list =np.sum(movie_list,axis=0) # compress the array into the sum of it's columns
+        return movie_list[1]/movie_list[0] # return the weighted review average
+
     except:
         # if anything at all goes wrong, just spit out the average review score
         return 4.110994929404886
