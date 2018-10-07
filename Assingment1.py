@@ -17,7 +17,7 @@ req_reviews_file = "reviews.test.unlabeled.csv"
 try:
     # load in the npz user-item matrix
     movie_reviews = scipy.sparse.load_npz(review_file)
-    movie_reviews = movie_reviews.tolil().astype(np.int8) # convert it to a lil_matrix with int8 (1 <= values <= 5)
+    movie_reviews = movie_reviews.tocsr().astype(np.int8) # convert it to a lil_matrix with int8 (1 <= values <= 5)
     users = pd.read_json(user_file, lines=True) # get the dictionary that gives me the user->user index values
     movies = pd.read_json(movie_file, lines=True) # get the dictionary that gives me the movie->movie index values
     movie_to_concept = np.load(movie_concept_file) # get teh movie-to-concept matrix from the SVD
