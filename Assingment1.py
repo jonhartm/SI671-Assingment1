@@ -26,6 +26,8 @@ except Exception as e:
     # let me know if any one of those isn't present.
     print("Unable to load all files...")
 
+average_review_score = 4.110994929404886 # straight average of all reviews in the matrix
+
 # Load in a json file and use it to populate a sparse matrix with reviewrs as rows and movies as columns
 # saves the resultant output to an npz file so we can retrieve it later without having to re-create it.
 def Create_NPZ(file, output_file):
@@ -83,6 +85,35 @@ def Create_SVD(k):
     user_to_concept,s,movie_to_concept = linalg.svds(movie_reviews.asfptype(), k=k)
     np.save(movie_concept_file,movie_to_concept)
     super_print("Complete")
+
+# get the average rating of all this user's reviews
+def get_user_baseline_reviews(user):
+    super_print("user "+str(user.name))
+    total = 0
+    count = 0
+    for m_id in movie_reviews[user.name].nonzero()[1]:
+        count += 1
+        total += movie_reviews[user.name,m_id]
+    return total/count - average_review_score
+
+# get the averate rating all users have given this movie
+def get_movie_baseline_reviews(movie):
+    super_print("movie "+str(movie.name))
+    total = 0
+    count = 0
+    for u_id in movie_reviews[:,movie.name].nonzero()[0]:
+        count += 1
+        total += movie_reviews[u_id,movie.name]
+    return total/count - average_review_score
+
+# applies the above two functions over the users and movies DataFrames
+# saves the output to files so we only have to do this once
+def Get_Baseline_Reviews():
+    users["baseline"] = users.apply(get_user_baseline_reviews, axis=1)
+    users.to_json("allusersbaselines_df.json",orient='records', lines=True)
+
+    movies["baseline"] = movies.apply(get_movie_baseline_reviews, axis=1)
+    movies.to_json("allmoviesbaselines_df.json",orient='records', lines=True)
 
 # Given a userID and movieID, predict the rating that user would give to that movie
 def PredictReview(userID, movieID):
@@ -161,6 +192,8 @@ if __name__=="__main__":
                 Create_NPZ("reviews.training.json", "trainingset")
             elif sys.argv[2] == "SVD":
                 Create_SVD(int(sys.argv[3]))
+            elif sys.argv[2] == "baselines":
+                Get_Baseline_Reviews()
         elif sys.argv[1] == "similar":
             Get_Similar_Users(sys.argv[2])
         elif sys.argv[1] == "predict":
