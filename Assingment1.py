@@ -21,7 +21,6 @@ try:
     movies = pd.read_json(movie_file, lines=True)
     movie_to_concept = np.load(movie_concept_file)
     req_reviews = pd.read_csv(req_reviews_file)
-    user_vectors = np.load(user_vectors_file)
 except Exception as e:
     print("Unable to load all files...")
 
@@ -79,84 +78,11 @@ def Create_NPZ(file, output_file):
     # save to file
     scipy.sparse.save_npz(output_file + ".npz", m_reviews)
 
-def Create_SVD(k, min_energy=0.8):
-    # figure out how much we can reduce the review matrix
-    # k=min(movie_reviews.shape)-1
-    # U,s,V = linalg.svds(movie_reviews.asfptype(), k=k)
-    # total_energy = np.square(s).sum()
-    # print(s)
-    #
-    # energy = total_energy
-    # while energy > (total_energy*min_energy):
-    #     k -= 1
-    #     s = np.delete(s,0)
-    #     energy = np.square(s).sum()
-    #     print("Energy of SVD Decomp k={}: {:.3f}".format(k,energy/total_energy))
+def Create_SVD(k):
     super_print("Making SVD with k = " + str(k))
     user_to_concept,s,movie_to_concept = linalg.svds(movie_reviews.asfptype(), k=k)
     np.save(movie_concept_file,movie_to_concept)
     super_print("Complete")
-
-def Get_Similar_Users(UserID, ids_to_check=[], N=5, min_sim=0.8):
-    user_index = users[users.userID==UserID].index.values[0]
-    this_user_reviews = movie_reviews[user_index].toarray()[0]
-    this_user_vector = np.sum(this_user_reviews*movie_to_concept, axis=1)
-    super_print("Searching for Users similar to " + UserID)
-    if ids_to_check == []:
-        ids_to_check = range(m_reviews.shape[0])
-    user_list = []
-    for row in ids_to_check:
-        if row == user_index: # skip this user's own row
-            continue
-        user_reviews = movie_reviews[row].toarray()[0]
-        user_vector = np.sum(user_reviews*movie_to_concept, axis=1)
-        similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
-        user_list.append({"id":row,"sim":similarity})
-        if similarity >= min_sim:
-            super_print("Found User with similarity {}".format(similarity))
-        else:
-            super_print("(Poor User similarity: {:.2f})".format(similarity))
-    user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N)
-    print(user_list)
-    return user_list
-
-def old_PredictReview(userID, movieID):
-    # parameters
-    N = 20 # what's the maximum number of similar users to consider
-    min_sim = 0# what is the minimum similarity we're going to consider
-
-    # We're only interested in checking other users who have also reviewed this movie
-    indexes_to_check = Get_Indexes_With_Reviews(movieID)
-
-    # unless I come up with something better, return the average rating for a movie that's never been rated.
-    if indexes_to_check == []:
-        return 4.110994929404886
-
-    try:
-        # Get our indexes so we can find them on the review matrix
-        user_index = users[users.userID==userID].index.values[0]
-        movie_index = movies[movies.asin==movieID].index[0]
-
-        this_user_vector = user_vectors[user_index]
-
-        user_list = []
-        for row in indexes_to_check:
-
-            user_vector = user_vectors[row]
-            similarity = pairwise.cosine_similarity([this_user_vector], [user_vector])[0][0]
-
-            if similarity > min_sim:
-                user_reviews = movie_reviews[row].toarray()[0]
-                user_list.append({"id":row,"sim":similarity,"rating":user_reviews[movie_index]})
-
-        user_list = DataFrame(user_list).sort_values("sim", ascending=False).head(N) # sort by similarity descending, limit by N
-        user_list["weighted_rating"] = user_list.rating * user_list.sim # get ratings weighted by similarity
-        predicted_rating = user_list.weighted_rating.sum()/user_list.sim.sum() # predicted rating is the weighted average of the similar users by similarity
-        return predicted_rating
-
-    except:
-        print("oh god I have no idea") # if all else fails return the average
-        return 4.110994929404886
 
 def PredictReview(userID, movieID):
     try:
