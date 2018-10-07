@@ -122,9 +122,15 @@ def PredictReview(userID, movieID):
         N = 20 # how many movies to consider when we're weighting
         min_sim = 0.2 # what is the minimum level of similarity to consider
 
+        user_row = users[users.userID==userID]
+        movie_row = movies[movies.asin==movieID]
+
         # Get our indexes so we can find them on the review matrix
-        user_index = users[users.userID==userID].index.values[0]
-        movie_index = movies[movies.asin==movieID].index[0]
+        user_index = user_row.index.values[0]
+        movie_index = movie_row.index[0]
+
+        user_baseline = user_row.baseline.values[0]
+        movie_baseline = movie_row.baseline.values[0]
 
         # get the movie->concept matrix for this movie
         this_movie_concept_vector = movie_to_concept[:,movie_index]
@@ -142,13 +148,14 @@ def PredictReview(userID, movieID):
             # add it to the list so we can sort it
             if similarity > min_sim:
                 rating = movie_reviews[user_index,m_id]
-                movie_list.append([similarity,(similarity*rating)]) # add a entry [sim,weighted rating]
+                movie_list.append([similarity,(similarity*(rating+user_baseline))]) # add a entry [sim,weighted rating]
         # sort the list by similarity
-        movie_list = np.array(movie_list) # convert to a numpy array
+        movie_list = np.array(movie_list) # convert to a numpy array\
         movie_list[::-1].sort(0) # sort the array by similarity descinding
         movie_list = movie_list[:N] # trim to the top N elements
-        movie_list =np.sum(movie_list,axis=0) # compress the array into the sum of it's columns
-        return movie_list[1]/movie_list[0] # return the weighted review average
+        movie_list = np.sum(movie_list,axis=0) # compress the array into the sum of it's columns
+        b = user_baseline+movie_baseline # get this user's baseline
+        return b + (movie_list[1]/movie_list[0]) # return the baseline + the weighted review average
 
     except:
         # if anything at all goes wrong, just spit out the average review score
