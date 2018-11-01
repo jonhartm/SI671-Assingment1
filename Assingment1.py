@@ -9,8 +9,8 @@ from sklearn.metrics import pairwise
 from util import Timer, super_print
 
 review_file = "1_trainingset.npz"
-user_file = "trainingsetusers_df.json"
-movie_file = "trainingsetmovies_df.json"
+user_file = "allusersbaselines_df.json"
+movie_file = "allmoviesbaselines_df.json"
 movie_concept_file = "trainingMovie_to_Concept_100.npy"
 req_reviews_file = "reviews.test.unlabeled.csv"
 
@@ -116,50 +116,96 @@ def Get_Baseline_Reviews():
     movies.to_json("allmoviesbaselines_df.json",orient='records', lines=True)
 
 # Given a userID and movieID, predict the rating that user would give to that movie
-def PredictReview(userID, movieID):
-    try:
-        # parameters
-        N = 20 # how many movies to consider when we're weighting
-        min_sim = 0.2 # what is the minimum level of similarity to consider
+def PredictReview(
+                    userID,
+                    movieID,
+                    min_sim=0.75,
+                    baseline_weighting=0.75,
+                    desired_sim_records=2,
+                    backup_min_sim = 0.5,
+                    debug=False
+                ):
 
-        user_row = users[users.userID==userID]
-        movie_row = movies[movies.asin==movieID]
+    # just make sure - I made this mistake once. 
+    if backup_min_sim > min_sim:
+        raise Exception("min_sim must be greater than backup_min_sim")
 
-        # Get our indexes so we can find them on the review matrix
-        user_index = user_row.index.values[0]
-        movie_index = movie_row.index[0]
+    # Get our indexes so we can find them on the review matrix
+    user_row = users[users.userID==userID]
+    movie_row = movies[movies.asin==movieID]
 
-        user_baseline = user_row.baseline.values[0]
-        movie_baseline = movie_row.baseline.values[0]
+    # cold start problem
+    if len(user_row)==0 and len(movie_row)!=0: # new user, but not a new movie
+        if (debug): print("New User")
+        return average_review_score+movie_row.baseline.values[0]
 
-        # get the movie->concept matrix for this movie
-        this_movie_concept_vector = movie_to_concept[:,movie_index]
+    if len(user_row)!=0 and len(movie_row)==0: # not a new user, but a new movie
+        if (debug): print("New Movie")
+        return average_review_score+user_row.baseline.values[0]
 
-        # get a list of the indexs of movies this user has reviewed
-        user_reviews = movie_reviews.getrow(user_index).nonzero()[1]
+    if len(user_row)==0 and len(movie_row)==0: # new user and new movie
+        if (debug): print("New User and New Movie")
+        return average_review_score
 
-        # check how similar each movie is to the one we're trying to guess
-        movie_list = []
-        for m_id in user_reviews:
-            # get the concept vector for this movie
-            m_concept_vector = movie_to_concept[:,m_id]
-            # calculate how similar this movie's ratings are
-            similarity = pairwise.cosine_similarity([this_movie_concept_vector], [m_concept_vector])[0][0]
-            # add it to the list so we can sort it
+
+    user_index = user_row.index[0]
+    movie_index = movie_row.index[0]
+
+    user_baseline = user_row.baseline.values[0] * baseline_weighting
+    movie_baseline = movie_row.baseline.values[0] * baseline_weighting
+
+    if (debug): print("user/movie baselines:",user_baseline,movie_baseline)
+
+    # get the movie->concept matrix for this movie
+    this_movie_concept_vector = movie_to_concept[:,movie_index]
+
+    # get a list of the indexs of movies this user has reviewed
+    user_reviews = movie_reviews.getrow(user_index).nonzero()[1]
+
+    # check how similar each movie is to the one we're trying to guess
+    movie_list = []
+    backup_movie_list = []
+    if (debug): print("found",len(user_reviews),"other reviews")
+    for m_id in user_reviews:
+        # get the concept vector for this movie
+        m_concept_vector = movie_to_concept[:,m_id]
+        # calculate how similar this movie's ratings are
+        similarity = pairwise.cosine_similarity([this_movie_concept_vector], [m_concept_vector])[0][0]
+        # add it to the list so we can sort it
+        if similarity > backup_min_sim:
+            # get this movie's baseline
+            this_movie_baseline = movies.iloc[m_id].baseline
+            rating = movie_reviews[user_index,m_id]
+            weighted_similarity = (similarity*(rating-this_movie_baseline))
+            backup_movie_list.append([similarity,weighted_similarity])
             if similarity > min_sim:
-                rating = movie_reviews[user_index,m_id]
-                movie_list.append([similarity,(similarity*(rating+user_baseline))]) # add a entry [sim,weighted rating]
-        # sort the list by similarity
-        movie_list = np.array(movie_list) # convert to a numpy array\
-        movie_list[::-1].sort(0) # sort the array by similarity descinding
-        movie_list = movie_list[:N] # trim to the top N elements
-        movie_list = np.sum(movie_list,axis=0) # compress the array into the sum of it's columns
-        b = user_baseline+movie_baseline # get this user's baseline
-        return b + (movie_list[1]/movie_list[0]) # return the baseline + the weighted review average
+                movie_list.append([similarity,weighted_similarity]) # add a entry [sim,weighted rating]
+                if (debug): print("movie: {} rated {} - sim: {:.4f} - weighted-sim: {:.4f}".format(m_id,rating,similarity,weighted_similarity))
+        else:
+            if (debug): print("poor sim: {:.4f}".format(similarity))
 
-    except:
-        # if anything at all goes wrong, just spit out the average review score
-        return 4.110994929404886
+    # if we don't have the desired minimum similar movies, use the backup list with it's lower tolerance instead
+    if len(movie_list) > desired_sim_records:
+        movie_list = backup_movie_list
+    # sort the list by similarity
+    movie_list = np.array(movie_list) # convert to a numpy array\
+    movie_list[::-1].sort(0) # sort the array by similarity descinding
+    if len(movie_list) == 0: # we didn't find any similar movies
+        rating = average_review_score + user_baseline + movie_baseline
+    else:
+
+        movie_list = np.sum(movie_list,axis=0) # compress the array into the sum of it's columns
+        if (debug): print("summed cols",movie_list)
+        if (debug): print("weighted_review",(movie_list[1]/movie_list[0]))
+        if (debug): print("baselines",user_baseline,movie_baseline,"total",(user_baseline+movie_baseline))
+        rating = user_baseline + movie_baseline + (movie_list[1]/movie_list[0]) # return the baseline + the weighted review average
+
+    # no ratings above 5 or below 1
+    rating = max(1, rating)
+    rating = min(5, rating)
+
+    if (debug): print("RATING:",rating)
+    return rating
 
 # Roll through reviews.test.unlabeled.csv and get a predicted review for each user/movie combination
 # saves the results to "output.csv" (also saves every 1000 predictions, just in case)
@@ -178,12 +224,13 @@ def GetPredictions(file=None):
     t.Start()
     for row in req_reviews.iterrows():
         count += 1
-        if count > records_to_skip:
+        if count > records_to_skip: # in the event we're continuing a file, jump to the last record
             predicted = PredictReview(row[1].reviewerID, row[1].asin)
             results.append({"datapointID":row[1].datapointID,"overall":predicted})
             if count % 1000 == 0:
+                # informative prints so we know it's still working
                 t.Stop()
-                super_print("({} of {}) ({:.2f}s/prediction)".format(count, total_count, t.elapsed/1000))
+                super_print("({} of {}) ({:.4f}s/prediction)".format(count, total_count, t.elapsed/1000))
                 t.Start()
                 DataFrame(results).to_csv("output.csv", index=False)
     DataFrame(results).to_csv("output.csv", index=False)
